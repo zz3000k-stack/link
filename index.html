@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的連結導航</title>
+    <!-- 引入 Tailwind CSS (樣式) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Babel (讓瀏覽器看懂 React JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- 設定 Tailwind 的字型與顏色 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Microsoft JhengHei', 'sans-serif'],
+                    },
+                    cursor: {
+                        'grab': 'grab',
+                        'grabbing': 'grabbing',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 隱藏捲軸但保持功能 */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        /* 拖曳時的樣式優化 */
+        .dragging {
+            opacity: 0.5;
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <!-- 使用 Import Map 來引入 React 和 Lucide 圖示庫 -->
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+        }
+    }
+    </script>
+
+    <!-- 主程式邏輯 -->
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Plus, Trash2, Search, ExternalLink, Layout, X, 
+            Settings, Save, RotateCcw, Menu, FolderOpen, 
+            ChevronRight, Home, Grid, Globe, Info, Pencil, GripVertical
+        } from 'lucide-react';
+
+        // 預設的連結資料
+        const INITIAL_DATA = [
+            {
+                id: 'tools',
+                title: '常用工具',
+                links: [
+                { name: 'Google', url: 'https://www.google.com.tw', description: '搜尋引擎龍頭，找資料用' },
+                { name: 'Gmail', url: 'https://mail.google.com', description: '收發電子郵件' },
+                { name: 'ChatGPT', url: 'https://chat.openai.com', description: 'AI 助手，協助寫作與程式碼' },
+                { name: 'Google 翻譯', url: 'https://translate.google.com.tw', description: '' },
+                ]
+            },
+            {
+                id: 'social',
+                title: '社群媒體',
+                links: [
+                { name: 'Facebook', url: 'https://www.facebook.com', description: '瀏覽動態牆' },
+                { name: 'Instagram', url: 'https://www.instagram.com', description: '' },
+                { name: 'Threads', url: 'https://www.threads.net', description: '' },
+                { name: 'PTT', url: 'https://www.ptt.cc', description: '批踢踢實業坊' },
+                ]
+            },
+            {
+                id: 'media',
+                title: '影音娛樂',
+                links: [
+                { name: 'YouTube', url: 'https://www.youtube.com', description: '觀看影片、聽音樂' },
+                { name: 'Netflix', url: 'https://www.netflix.com', description: '追劇看電影' },
+                { name: 'Twitch', url: 'https://www.twitch.tv', description: '遊戲實況直播' },
+                ]
+            },
+            {
+                id: 'news',
+                title: '新聞資訊',
+                links: [
+                { name: 'Yahoo 奇摩', url: 'https://tw.yahoo.com', description: '' },
+                { name: '中央氣象署', url: 'https://www.cwa.gov.tw', description: '查詢天氣預報、地震資訊' },
+                ]
+            }
+        ];
+
+        const App = () => {
+            // --- State 管理 ---
+            const [categories, setCategories] = useState(() => {
+                const saved = localStorage.getItem('my-links-data');
+                return saved ? JSON.parse(saved) : INITIAL_DATA;
+            });
+
+            const [activeTabId, setActiveTabId] = useState(() => {
+                return categories.length > 0 ? categories[0].id : null;
+            });
+            
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isEditMode, setIsEditMode] = useState(false);
+            
+            // 編輯狀態
+            const [editingTarget, setEditingTarget] = useState(null);
+
+            // 拖曳相關 Ref (使用 Ref 避免頻繁 render 造成拖曳中斷)
+            const dragItem = useRef(null);
+            const dragOverItem = useRef(null);
+
+            const [newLinkData, setNewLinkData] = useState({
+                categoryId: '',
+                name: '',
+                url: '',
+                description: '',
+                newCategoryName: ''
+            });
+
+            // --- Effect: 自動儲存 ---
+            useEffect(() => {
+                localStorage.setItem('my-links-data', JSON.stringify(categories));
+            }, [categories]);
+
+            useEffect(() => {
+                if (categories.length > 0 && !categories.find(c => c.id === activeTabId)) {
+                setActiveTabId(categories[0].id);
+                }
+            }, [categories, activeTabId]);
+
+            // --- 功能函數 ---
+            const getFavicon = (url) => {
+                try {
+                const domain = new URL(url).hostname;
+                return `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+                } catch (e) {
+                return '';
+                }
+            };
+
+            const deleteLink = (catId, linkIndex) => {
+                if (!window.confirm('確定要刪除這個連結嗎？')) return;
+                setCategories(prev => prev.map(cat => {
+                if (cat.id === catId) {
+                    const newLinks = [...cat.links];
+                    newLinks.splice(linkIndex, 1);
+                    return { ...cat, links: newLinks };
+                }
+                return cat;
+                }));
+            };
+
+            const deleteCategory = (catId) => {
+                if (!window.confirm('確定要刪除整個分類及其所有連結嗎？')) return;
+                setCategories(prev => prev.filter(c => c.id !== catId));
+            };
+
+            const handleSaveLink = (e) => {
+                e.preventDefault();
+                const targetLink = { 
+                    name: newLinkData.name, 
+                    url: newLinkData.url,
+                    description: newLinkData.description 
+                };
+                
+                if (!targetLink.url.startsWith('http')) {
+                    targetLink.url = 'https://' + targetLink.url;
+                }
+
+                if (editingTarget && editingTarget.catId === newLinkData.categoryId) {
+                     setCategories(prev => prev.map(cat => {
+                        if (cat.id === editingTarget.catId) {
+                            const newLinks = [...cat.links];
+                            newLinks[editingTarget.linkIndex] = targetLink;
+                            return { ...cat, links: newLinks };
+                        }
+                        return cat;
+                    }));
+                } else {
+                    setCategories(prev => {
+                        let newCategories = [...prev];
+                        if (editingTarget) {
+                            newCategories = newCategories.map(cat => {
+                                if (cat.id === editingTarget.catId) {
+                                    const newLinks = [...cat.links];
+                                    newLinks.splice(editingTarget.linkIndex, 1);
+                                    return { ...cat, links: newLinks };
+                                }
+                                return cat;
+                            });
+                        }
+                        let targetCatId = newLinkData.categoryId;
+                        if (targetCatId === 'NEW_CATEGORY_OPTION') {
+                            const newId = Date.now().toString();
+                            const newCategory = {
+                                id: newId,
+                                title: newLinkData.newCategoryName || '新分類',
+                                links: [targetLink]
+                            };
+                            newCategories.push(newCategory);
+                            targetCatId = newId;
+                        } else {
+                            newCategories = newCategories.map(cat => {
+                                if (cat.id === targetCatId) {
+                                    return { ...cat, links: [...cat.links, targetLink] };
+                                }
+                                return cat;
+                            });
+                        }
+                        setActiveTabId(targetCatId);
+                        return newCategories;
+                    });
+                }
+                setIsModalOpen(false);
+                setNewLinkData({ categoryId: '', name: '', url: '', description: '', newCategoryName: '' });
+                setEditingTarget(null);
+            };
+
+            const handleReset = () => {
+                if (window.confirm('這將會清除你所有的客製化設定並恢復預設值，確定嗎？')) {
+                setCategories(INITIAL_DATA);
+                setActiveTabId(INITIAL_DATA[0].id);
+                }
+            };
+
+            const openAddModal = () => {
+                setEditingTarget(null);
+                setNewLinkData({
+                    categoryId: activeTabId || (categories[0] ? categories[0].id : 'NEW_CATEGORY_OPTION'),
+                    name: '',
+                    url: '',
+                    description: '',
+                    newCategoryName: ''
+                });
+                setIsModalOpen(true);
+            };
+
+            const openEditModal = (catId, index, link) => {
+                setEditingTarget({ catId, linkIndex: index });
+                setNewLinkData({
+                    categoryId: catId,
+                    name: link.name,
+                    url: link.url,
+                    description: link.description || '',
+                    newCategoryName: ''
+                });
+                setIsModalOpen(true);
+            };
+
+            // --- 拖曳排序邏輯 ---
+            const handleDragStart = (e, position) => {
+                dragItem.current = position;
+                // 增加一些視覺效果
+                e.target.classList.add('dragging');
+            };
+
+            const handleDragEnter = (e, position) => {
+                dragOverItem.current = position;
+                // 這裡可以加入即時排序的邏輯，但為了穩定性，我們在 Drop 時執行，
+                // 或者如果想要即時交換，可以開啟下方邏輯：
+                
+                if (dragItem.current === null || dragItem.current === position) return;
+
+                const newCategories = [...categories];
+                const activeCatIndex = newCategories.findIndex(c => c.id === activeTabId);
+                // 只有在同一分類下才允許排序
+                if (activeCatIndex === -1) return;
+
+                const activeLinks = [...newCategories[activeCatIndex].links];
+                const draggedLinkContent = activeLinks[dragItem.current];
+                
+                // 執行陣列移動
+                activeLinks.splice(dragItem.current, 1);
+                activeLinks.splice(position, 0, draggedLinkContent);
+                
+                newCategories[activeCatIndex].links = activeLinks;
+                setCategories(newCategories);
+                
+                // 更新當前拖曳項目的索引，因為它已經移動了
+                dragItem.current = position;
+            };
+
+            const handleDragEnd = (e) => {
+                e.target.classList.remove('dragging');
+                dragItem.current = null;
+                dragOverItem.current = null;
+            };
+
+            // --- 視圖邏輯 ---
+            const isSearching = searchTerm.length > 0;
+            // 判斷是否允許拖曳：在編輯模式 且 不在搜尋模式
+            const canDrag = isEditMode && !isSearching;
+
+            let displayContent = [];
+            let displayTitle = '';
+
+            if (isSearching) {
+                displayTitle = `搜尋結果: "${searchTerm}"`;
+                categories.forEach(cat => {
+                const matchedLinks = cat.links.filter(link => 
+                    link.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                    link.url.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                    (link.description && link.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                );
+                if (matchedLinks.length > 0) {
+                    displayContent.push({ ...cat, links: matchedLinks, isSearchResult: true });
+                }
+                });
+            } else {
+                const currentCategory = categories.find(c => c.id === activeTabId);
+                if (currentCategory) {
+                displayTitle = currentCategory.title;
+                displayContent = [currentCategory];
+                }
+            }
+
+            return (
+                <div className="flex h-screen bg-slate-50 text-slate-800 font-sans overflow-hidden">
+                
+                {/* Desktop Sidebar */}
+                <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 shadow-sm z-20">
+                    <div className="p-6 border-b border-slate-100">
+                    <div className="flex items-center gap-2 text-blue-600 font-bold text-xl">
+                        <Layout className="fill-blue-600 text-white p-1 rounded bg-blue-600" size={32} />
+                        <span>連結導航</span>
+                    </div>
+                    </div>
+
+                    <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+                    {categories.map(cat => (
+                        <button
+                        key={cat.id}
+                        onClick={() => {
+                            setActiveTabId(cat.id);
+                            setSearchTerm('');
+                        }}
+                        className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 text-left group ${
+                            activeTabId === cat.id && !isSearching
+                            ? 'bg-blue-50 text-blue-700 font-medium shadow-sm ring-1 ring-blue-100' 
+                            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                        }`}
+                        >
+                        <div className="flex items-center gap-3">
+                            {activeTabId === cat.id && !isSearching ? <FolderOpen size={18} /> : <Grid size={18} />}
+                            <span className="truncate">{cat.title}</span>
+                        </div>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            activeTabId === cat.id && !isSearching ? 'bg-blue-200 text-blue-800' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200'
+                        }`}>
+                            {cat.links.length}
+                        </span>
+                        </button>
+                    ))}
+                    </nav>
+
+                    <div className="p-4 border-t border-slate-100 space-y-2">
+                    <button 
+                        onClick={openAddModal}
+                        className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-3 rounded-xl font-medium transition-all shadow-md hover:shadow-lg active:scale-95"
+                    >
+                        <Plus size={18} />
+                        <span>新增項目</span>
+                    </button>
+                    <button 
+                        onClick={() => setIsEditMode(!isEditMode)}
+                        className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+                        isEditMode ? 'bg-amber-100 text-amber-700' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                        }`}
+                    >
+                        <Settings size={16} />
+                        <span>{isEditMode ? '完成編輯' : '管理模式'}</span>
+                    </button>
+                    </div>
+                </aside>
+
+                {/* Main Content */}
+                <div className="flex-1 flex flex-col min-w-0 h-full">
+                    
+                    {/* Mobile Header */}
+                    <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center gap-3 sticky top-0 z-10">
+                    <div className="md:hidden text-slate-400">
+                        <Menu size={24} /> 
+                    </div>
+
+                    <div className="flex-1 max-w-2xl relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search size={18} className={`transition-colors ${isSearching ? 'text-blue-500' : 'text-slate-400'}`} />
+                        </div>
+                        <input
+                        type="text"
+                        className={`block w-full pl-10 pr-3 py-2.5 border rounded-full leading-5 transition-all duration-200 text-sm md:text-base ${
+                            isSearching 
+                            ? 'bg-white border-blue-400 ring-2 ring-blue-100 text-slate-900' 
+                            : 'bg-slate-100 border-transparent text-slate-600 focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200'
+                        }`}
+                        placeholder="搜尋網站或備註..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        {isSearching && (
+                        <button 
+                            onClick={() => setSearchTerm('')}
+                            className="absolute inset-y-0 right-3 flex items-center text-slate-400 hover:text-slate-600"
+                        >
+                            <X size={16} />
+                        </button>
+                        )}
+                    </div>
+
+                    <div className="flex items-center md:hidden gap-2">
+                        <button 
+                            onClick={openAddModal}
+                            className="p-2 bg-blue-600 text-white rounded-full shadow-md active:scale-95"
+                        >
+                            <Plus size={20} />
+                        </button>
+                    </div>
+                    </header>
+
+                    {/* Mobile Tabs */}
+                    {!isSearching && (
+                    <div className="md:hidden overflow-x-auto bg-white border-b border-slate-200 shadow-sm scrollbar-hide">
+                        <div className="flex px-4 py-2 gap-2 min-w-max">
+                        {categories.map(cat => (
+                            <button
+                            key={cat.id}
+                            onClick={() => setActiveTabId(cat.id)}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                activeTabId === cat.id 
+                                ? 'bg-slate-800 text-white shadow-sm' 
+                                : 'bg-slate-100 text-slate-600'
+                            }`}
+                            >
+                            {cat.title}
+                            </button>
+                        ))}
+                        </div>
+                    </div>
+                    )}
+
+                    <main className="flex-1 overflow-y-auto p-4 md:p-8 scroll-smooth">
+                    <div className="max-w-6xl mx-auto min-h-full flex flex-col">
+                        
+                        <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                            {isSearching ? <Search className="text-blue-500" /> : <FolderOpen className="text-blue-500" />}
+                            {displayTitle}
+                        </h2>
+                        {isEditMode && !isSearching && categories.length > 0 && (
+                            <button 
+                            onClick={() => deleteCategory(activeTabId)}
+                            className="flex items-center gap-1 text-sm text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg border border-red-100 transition-colors"
+                            >
+                            <Trash2 size={16} />
+                            <span className="hidden sm:inline">刪除此分類頁</span>
+                            <span className="sm:hidden">刪除</span>
+                            </button>
+                        )}
+                        </div>
+
+                        {displayContent.length === 0 && (
+                        <div className="flex-1 flex flex-col items-center justify-center text-slate-400 pb-20">
+                            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
+                            <Search size={32} />
+                            </div>
+                            <p className="text-lg font-medium text-slate-500">
+                            {isSearching ? '找不到符合的結果' : '這個分類還沒有連結'}
+                            </p>
+                            {!isSearching && (
+                            <button onClick={openAddModal} className="mt-4 text-blue-600 hover:underline">
+                                新增第一個連結
+                            </button>
+                            )}
+                        </div>
+                        )}
+
+                        <div className="space-y-8 pb-12">
+                        {displayContent.map((category) => (
+                            <div key={category.id} className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+                            {isSearching && (
+                                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                {category.title}
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                                {category.links.map((link, linkIndex) => {
+                                const realCatId = category.id;
+                                // 使用 URL + Name 作為 Key，確保排序時 React 能正確識別移動
+                                const uniqueKey = `${link.url}-${link.name}`;
+                                
+                                return (
+                                    <div 
+                                        key={uniqueKey}
+                                        draggable={canDrag}
+                                        onDragStart={(e) => handleDragStart(e, linkIndex)}
+                                        onDragEnter={(e) => handleDragEnter(e, linkIndex)}
+                                        onDragEnd={handleDragEnd}
+                                        onDragOver={(e) => e.preventDefault()}
+                                        className={`group relative bg-white rounded-xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all duration-200 overflow-hidden ${canDrag ? 'cursor-move hover:ring-2 hover:ring-blue-400 hover:ring-opacity-50' : ''}`}
+                                    >
+                                    <a 
+                                        href={canDrag ? undefined : link.url} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className={`flex flex-col p-4 h-full relative z-0 ${canDrag ? 'pointer-events-none' : ''}`}
+                                    >
+                                        <div className="flex items-start justify-between mb-3">
+                                        <div className="w-10 h-10 rounded-lg bg-slate-50 flex items-center justify-center overflow-hidden border border-slate-100 shrink-0 shadow-inner">
+                                            <img 
+                                            src={getFavicon(link.url)} 
+                                            alt="" 
+                                            className="w-6 h-6 object-contain"
+                                            onError={(e) => {
+                                                e.target.onerror = null; 
+                                                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cline x1='2' y1='12' x2='22' y2='12'/%3E%3Cpath d='M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'/%3E%3C/svg%3E";
+                                            }}
+                                            />
+                                        </div>
+                                        {link.description && (
+                                            <Info size={14} className="text-blue-300 opacity-60 group-hover:opacity-0 transition-opacity" />
+                                        )}
+                                        </div>
+                                        <div className="mt-auto">
+                                        <h3 className="font-medium text-slate-800 line-clamp-1 group-hover:text-blue-600 transition-colors text-sm md:text-base" title={link.name}>
+                                            {link.name}
+                                        </h3>
+                                        <div className="flex items-center gap-1 mt-1 text-slate-400 text-xs">
+                                            <Globe size={10} />
+                                            <span className="truncate">{new URL(link.url).hostname.replace('www.', '')}</span>
+                                        </div>
+                                        </div>
+                                    </a>
+
+                                    {link.description && !canDrag && (
+                                        <div className="absolute inset-x-0 bottom-0 bg-slate-800/95 backdrop-blur-sm p-3 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out z-10 flex flex-col justify-center min-h-[45%] pointer-events-none">
+                                        <div className="flex items-center gap-1.5 mb-1 text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                                            <Info size={10} />
+                                            <span>備註</span>
+                                        </div>
+                                        <p className="text-white text-xs leading-relaxed line-clamp-3">
+                                            {link.description}
+                                        </p>
+                                        </div>
+                                    )}
+
+                                    {/* 編輯模式下的覆蓋層 */}
+                                    {isEditMode && (
+                                        <div className="absolute inset-0 bg-slate-50/50 flex flex-col justify-between p-2 z-20 pointer-events-none">
+                                            {/* 左上角拖曳指示 (僅視覺) */}
+                                            <div className="text-slate-400 opacity-50">
+                                                <GripVertical size={16} />
+                                            </div>
+
+                                            {/* 右上角按鈕 (需要 pointer-events-auto 才能點擊) */}
+                                            <div className="absolute top-2 right-2 flex gap-1 pointer-events-auto">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation(); // 防止觸發拖曳
+                                                        openEditModal(realCatId, linkIndex, link);
+                                                    }}
+                                                    className="p-1.5 bg-white text-blue-500 rounded-full border border-blue-100 shadow-sm hover:bg-blue-50 transition-colors"
+                                                    title="編輯"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        deleteLink(realCatId, linkIndex);
+                                                    }}
+                                                    className="p-1.5 bg-white text-red-500 rounded-full border border-red-100 shadow-sm hover:bg-red-50 transition-colors"
+                                                    title="刪除"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                    </div>
+                                );
+                                })}
+                                
+                                {!isSearching && (
+                                <button 
+                                    onClick={openAddModal}
+                                    className="flex flex-col items-center justify-center p-4 rounded-xl border-2 border-dashed border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-slate-400 hover:text-blue-500 transition-all h-full min-h-[120px] group"
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center mb-2 transition-colors">
+                                    <Plus size={20} className="text-slate-400 group-hover:text-blue-500" />
+                                    </div>
+                                    <span className="text-xs font-medium">加入連結</span>
+                                </button>
+                                )}
+                            </div>
+                            </div>
+                        ))}
+                        </div>
+
+                        <div className="mt-auto pt-8 border-t border-slate-200 text-center text-slate-400 text-xs flex justify-center gap-4">
+                        <button onClick={handleReset} className="hover:text-red-500 transition-colors flex items-center gap-1">
+                            <RotateCcw size={12} /> 重置設定
+                        </button>
+                        </div>
+                    </div>
+                    </main>
+                </div>
+
+                {isModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100 border border-slate-100">
+                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white">
+                        <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                            <div className="bg-blue-100 p-1.5 rounded-lg text-blue-600">
+                            {editingTarget ? <Pencil size={18} /> : <Plus size={18} />}
+                            </div>
+                            {editingTarget ? '編輯項目' : '新增項目'}
+                        </h3>
+                        <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100 transition-colors">
+                            <X size={20} />
+                        </button>
+                        </div>
+                        
+                        <form onSubmit={handleSaveLink} className="p-6 space-y-5">
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700">網站名稱</label>
+                            <input
+                            required
+                            type="text"
+                            placeholder="例如：YouTube"
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-800 placeholder:text-slate-400"
+                            value={newLinkData.name}
+                            onChange={(e) => setNewLinkData({...newLinkData, name: e.target.value})}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700">網址 (URL)</label>
+                            <input
+                            required
+                            type="text"
+                            placeholder="例如：youtube.com"
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-800 placeholder:text-slate-400 font-mono text-sm"
+                            value={newLinkData.url}
+                            onChange={(e) => setNewLinkData({...newLinkData, url: e.target.value})}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700 flex items-center justify-between">
+                            備註 (選填)
+                            <span className="text-xs font-normal text-slate-400">滑鼠懸停時顯示</span>
+                            </label>
+                            <textarea
+                            placeholder="例如：這個網站用來查詢..."
+                            rows={2}
+                            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all text-slate-800 placeholder:text-slate-400 resize-none"
+                            value={newLinkData.description}
+                            onChange={(e) => setNewLinkData({...newLinkData, description: e.target.value})}
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-sm font-semibold text-slate-700">分類位置</label>
+                            <div className="relative">
+                            <select
+                                className="w-full pl-4 pr-10 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none text-slate-700"
+                                value={newLinkData.categoryId}
+                                onChange={(e) => setNewLinkData({...newLinkData, categoryId: e.target.value})}
+                            >
+                                {categories.map((cat) => (
+                                <option key={cat.id} value={cat.id}>{cat.title}</option>
+                                ))}
+                                <option disabled>──────────</option>
+                                <option value="NEW_CATEGORY_OPTION" className="text-blue-600 font-bold">+ 建立新分類頁面...</option>
+                            </select>
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                                <ChevronRight size={16} className="rotate-90" />
+                            </div>
+                            </div>
+                        </div>
+
+                        {newLinkData.categoryId === 'NEW_CATEGORY_OPTION' && (
+                            <div className="animate-in slide-in-from-top-2 duration-200 bg-blue-50 p-4 rounded-xl border border-blue-100">
+                            <label className="block text-sm font-semibold text-blue-700 mb-1.5">新分類名稱</label>
+                            <input
+                                required
+                                type="text"
+                                placeholder="例如：設計靈感"
+                                className="w-full px-4 py-2 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-blue-800"
+                                value={newLinkData.newCategoryName}
+                                onChange={(e) => setNewLinkData({...newLinkData, newCategoryName: e.target.value})}
+                                autoFocus
+                            />
+                            </div>
+                        )}
+
+                        <div className="pt-2 flex gap-3">
+                            <button
+                            type="button"
+                            onClick={() => setIsModalOpen(false)}
+                            className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+                            >
+                            取消
+                            </button>
+                            <button
+                            type="submit"
+                            className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-medium shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+                            >
+                            <Save size={18} />
+                            儲存
+                            </button>
+                        </div>
+                        </form>
+                    </div>
+                    </div>
+                )}
+                </div>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>

@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>現代網頁計算機</title>
+    <style>
+        /* 基礎重置與字型 */
+        * {
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: linear-gradient(135deg, #1e2024, #23272e);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+            padding: 10px; /* 減少邊距 */
+        }
+
+        /* 主容器：包含計算機與歷史紀錄 */
+        .main-wrapper {
+            display: flex;
+            gap: 15px;
+            align-items: stretch; /* 讓兩邊高度一致 */
+            flex-wrap: wrap; /* 手機版自動換行 */
+            justify-content: center;
+            height: auto;
+        }
+
+        /* 計算機主體容器 */
+        .calculator-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr); /* 4欄佈局 */
+            /* 調整高度：顯示區100px，按鈕60px */
+            grid-template-rows: minmax(100px, auto) repeat(5, 60px); 
+            gap: 10px; /* 縮小間距 */
+            background-color: #000000;
+            padding: 20px;
+            border-radius: 25px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+            width: 100%;
+            max-width: 360px; /* 寬度微調 */
+        }
+
+        /* 歷史紀錄面板 */
+        .history-panel {
+            background-color: #16181c;
+            width: 260px;
+            /* 高度設為 auto，透過 flex stretch 與計算機等高，或設定最大高度 */
+            min-height: 400px; 
+            border-radius: 25px;
+            padding: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #333;
+        }
+
+        .history-header {
+            font-size: 1.1rem;
+            color: #ff9f0a;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #333;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .history-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            list-style: none;
+            /* 自定義捲軸樣式 */
+            scrollbar-width: thin;
+            scrollbar-color: #444 #16181c;
+        }
+
+        /* Webkit 瀏覽器的捲軸樣式 */
+        .history-list::-webkit-scrollbar {
+            width: 8px;
+        }
+        .history-list::-webkit-scrollbar-track {
+            background: #16181c;
+        }
+        .history-list::-webkit-scrollbar-thumb {
+            background-color: #444;
+            border-radius: 10px;
+        }
+
+        .history-item {
+            background-color: #2c3038;
+            margin-bottom: 8px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            animation: fadeIn 0.3s ease;
+            cursor: pointer; /* 增加手指游標提示可點擊 */
+        }
+        
+        .history-item:hover {
+            background-color: #3a3f4a;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .history-expression {
+            font-size: 0.85rem;
+            color: #aaa;
+            margin-bottom: 2px;
+        }
+
+        .history-result {
+            font-size: 1.1rem;
+            color: white;
+            font-weight: bold;
+        }
+
+        .btn-clear-history {
+            margin-top: 10px;
+            background-color: #333;
+            color: #aaa;
+            border: none;
+            padding: 8px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn-clear-history:hover {
+            background-color: #444;
+            color: white;
+        }
+
+        .empty-msg {
+            color: #555;
+            text-align: center;
+            margin-top: 40px;
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        /* 顯示螢幕區域 */
+        .output {
+            grid-column: 1 / -1; /* 跨滿4欄 */
+            background-color: #000000;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: space-around;
+            padding: 10px;
+            word-wrap: break-word;
+            word-break: break-all;
+            border-bottom: 1px solid #333;
+            margin-bottom: 10px;
+        }
+
+        /* 上一步運算顯示 */
+        .previous-operand {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 1rem;
+            min-height: 20px;
+        }
+
+        /* 當前輸入顯示 */
+        .current-operand {
+            color: white;
+            font-size: 3rem;
+            font-weight: 300;
+        }
+
+        /* 按鈕通用樣式 */
+        button.key-btn {
+            cursor: pointer;
+            font-size: 1.4rem;
+            border: none;
+            outline: none;
+            border-radius: 50px; /* 圓形/橢圓按鈕 */
+            background-color: #333333;
+            color: white;
+            transition: all 0.1s ease;
+            user-select: none; /* 防止雙擊選取文字 */
+        }
+
+        /* 按鈕按下效果 */
+        button.key-btn:active {
+            transform: scale(0.95);
+            filter: brightness(1.2);
+        }
+
+        button.key-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        /* 運算符號按鈕 (橘色/黃色系) */
+        .btn-operator {
+            background-color: #ff9f0a;
+            color: white;
+            font-size: 1.6rem;
+        }
+
+        /* 等號按鈕 */
+        .span-two {
+            grid-column: span 2;
+            border-radius: 35px;
+        }
+        
+        /* 功能鍵 (AC, DEL) - 淺灰色 */
+        .btn-function {
+            background-color: #a5a5a5;
+            color: black;
+            font-weight: 500;
+            font-size: 1.2rem;
+        }
+
+        /* 響應式調整 */
+        @media (max-width: 650px) {
+            .main-wrapper {
+                flex-direction: column;
+                align-items: center;
+            }
+            .history-panel {
+                width: 100%;
+                max-width: 360px;
+                height: 200px; /* 手機版縮短高度 */
+                min-height: auto;
+            }
+            .calculator-grid {
+                padding: 15px;
+            }
+            .current-operand {
+                font-size: 2.5rem;
+            }
+            button.key-btn {
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="main-wrapper">
+        <!-- 計算機主體 -->
+        <div class="calculator-grid">
+            <div class="output">
+                <div data-previous-operand class="previous-operand"></div>
+                <div data-current-operand class="current-operand">0</div>
+            </div>
+            
+            <!-- 第一排 -->
+            <button data-all-clear class="key-btn btn-function">AC</button>
+            <button data-delete class="key-btn btn-function">DEL</button>
+            <button data-operation class="key-btn btn-function">%</button>
+            <button data-operation class="key-btn btn-operator">÷</button>
+            
+            <!-- 第二排 -->
+            <button data-number class="key-btn">7</button>
+            <button data-number class="key-btn">8</button>
+            <button data-number class="key-btn">9</button>
+            <button data-operation class="key-btn btn-operator">×</button>
+            
+            <!-- 第三排 -->
+            <button data-number class="key-btn">4</button>
+            <button data-number class="key-btn">5</button>
+            <button data-number class="key-btn">6</button>
+            <button data-operation class="key-btn btn-operator">-</button>
+            
+            <!-- 第四排 -->
+            <button data-number class="key-btn">1</button>
+            <button data-number class="key-btn">2</button>
+            <button data-number class="key-btn">3</button>
+            <button data-operation class="key-btn btn-operator">+</button>
+            
+            <!-- 第五排 -->
+            <button data-number class="key-btn span-two" style="text-align: left; padding-left: 25px;">0</button>
+            <button data-number class="key-btn">.</button>
+            <button data-equals class="key-btn btn-operator">=</button>
+        </div>
+
+        <!-- 歷史紀錄面板 -->
+        <div class="history-panel">
+            <div class="history-header">
+                <span>計算紀錄</span>
+                <span style="font-size: 0.8rem; color: #666;">最近5筆</span>
+            </div>
+            <ul class="history-list" id="historyList">
+                <div class="empty-msg">尚無紀錄</div>
+            </ul>
+            <button class="btn-clear-history" id="clearHistoryBtn">清空紀錄</button>
+        </div>
+    </div>
+
+    <script>
+        class Calculator {
+            constructor(previousOperandTextElement, currentOperandTextElement, historyListElement) {
+                this.previousOperandTextElement = previousOperandTextElement;
+                this.currentOperandTextElement = currentOperandTextElement;
+                this.historyListElement = historyListElement;
+                this.historyData = []; // 儲存歷史紀錄的陣列
+                this.clear();
+            }
+
+            clear() {
+                this.currentOperand = '0';
+                this.previousOperand = '';
+                this.operation = undefined;
+                this.shouldResetScreen = false;
+            }
+
+            delete() {
+                if (this.currentOperand === '0') return;
+                if (this.currentOperand.length === 1) {
+                    this.currentOperand = '0';
+                } else {
+                    this.currentOperand = this.currentOperand.toString().slice(0, -1);
+                }
+            }
+
+            appendNumber(number) {
+                if (this.shouldResetScreen) {
+                    this.currentOperand = '';
+                    this.shouldResetScreen = false;
+                }
+                if (number === '.' && this.currentOperand.includes('.')) return;
+                if (this.currentOperand === '0' && number !== '.') {
+                    this.currentOperand = number.toString();
+                } else {
+                    this.currentOperand = this.currentOperand.toString() + number.toString();
+                }
+            }
+
+            chooseOperation(operation) {
+                if (this.currentOperand === '') return;
+                
+                if (operation === '%') {
+                    const result = (parseFloat(this.currentOperand) / 100);
+                    // 紀錄百分比運算
+                    this.addHistory(`${this.currentOperand}%`, result);
+                    this.currentOperand = result.toString();
+                    return;
+                }
+
+                if (this.previousOperand !== '') {
+                    this.compute();
+                }
+                this.operation = operation;
+                this.previousOperand = this.currentOperand;
+                this.currentOperand = '';
+            }
+
+            compute() {
+                let computation;
+                const prev = parseFloat(this.previousOperand);
+                const current = parseFloat(this.currentOperand);
+                if (isNaN(prev) || isNaN(current)) return;
+                
+                switch (this.operation) {
+                    case '+':
+                        computation = prev + current;
+                        break;
+                    case '-':
+                        computation = prev - current;
+                        break;
+                    case '×':
+                        computation = prev * current;
+                        break;
+                    case '÷':
+                        if (current === 0) {
+                            alert("不能除以零！");
+                            this.clear();
+                            return;
+                        }
+                        computation = prev / current;
+                        break;
+                    default:
+                        return;
+                }
+                
+                computation = Math.round(computation * 1000000000) / 1000000000;
+                
+                // 產生歷史紀錄字串
+                const expression = `${this.getDisplayNumber(prev)} ${this.operation} ${this.getDisplayNumber(current)}`;
+                this.addHistory(expression, computation);
+
+                this.currentOperand = computation;
+                this.operation = undefined;
+                this.previousOperand = '';
+                this.shouldResetScreen = true;
+            }
+
+            // 新增歷史紀錄方法
+            addHistory(expression, result) {
+                const historyItem = {
+                    expression: expression,
+                    result: this.getDisplayNumber(result)
+                };
+
+                // 加入新紀錄到陣列開頭
+                this.historyData.unshift(historyItem);
+
+                // 只保留最近5筆
+                if (this.historyData.length > 5) {
+                    this.historyData.pop();
+                }
+
+                this.renderHistory();
+            }
+
+            // 清空歷史紀錄
+            clearHistory() {
+                this.historyData = [];
+                this.renderHistory();
+            }
+
+            // 渲染歷史紀錄到畫面
+            renderHistory() {
+                this.historyListElement.innerHTML = '';
+                
+                if (this.historyData.length === 0) {
+                    this.historyListElement.innerHTML = '<div class="empty-msg">尚無紀錄</div>';
+                    return;
+                }
+
+                this.historyData.forEach(item => {
+                    const li = document.createElement('li');
+                    li.classList.add('history-item');
+                    li.innerHTML = `
+                        <div class="history-expression">${item.expression} =</div>
+                        <div class="history-result">${item.result}</div>
+                    `;
+                    // 點擊歷史紀錄可以將結果帶回計算機 (選用功能)
+                    li.addEventListener('click', () => {
+                        if(this.shouldResetScreen) {
+                            this.currentOperand = item.result.toString().replace(/,/g, '');
+                            this.shouldResetScreen = false;
+                            this.updateDisplay();
+                        }
+                    });
+                    this.historyListElement.appendChild(li);
+                });
+            }
+
+            getDisplayNumber(number) {
+                const stringNumber = number.toString();
+                const integerDigits = parseFloat(stringNumber.split('.')[0]);
+                const decimalDigits = stringNumber.split('.')[1];
+                let integerDisplay;
+                if (isNaN(integerDigits)) {
+                    integerDisplay = '';
+                } else {
+                    integerDisplay = integerDigits.toLocaleString('en', { maximumFractionDigits: 0 });
+                }
+                if (decimalDigits != null) {
+                    return `${integerDisplay}.${decimalDigits}`;
+                } else {
+                    return integerDisplay;
+                }
+            }
+
+            updateDisplay() {
+                this.currentOperandTextElement.innerText = this.getDisplayNumber(this.currentOperand);
+                if (this.operation != null) {
+                    this.previousOperandTextElement.innerText = 
+                        `${this.getDisplayNumber(this.previousOperand)} ${this.operation}`;
+                } else {
+                    this.previousOperandTextElement.innerText = '';
+                }
+            }
+        }
+
+        const numberButtons = document.querySelectorAll('[data-number]');
+        const operationButtons = document.querySelectorAll('[data-operation]');
+        const equalsButton = document.querySelector('[data-equals]');
+        const deleteButton = document.querySelector('[data-delete]');
+        const allClearButton = document.querySelector('[data-all-clear]');
+        const previousOperandTextElement = document.querySelector('[data-previous-operand]');
+        const currentOperandTextElement = document.querySelector('[data-current-operand]');
+        const historyListElement = document.getElementById('historyList');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+        const calculator = new Calculator(previousOperandTextElement, currentOperandTextElement, historyListElement);
+
+        numberButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                calculator.appendNumber(button.innerText);
+                calculator.updateDisplay();
+            });
+        });
+
+        operationButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                calculator.chooseOperation(button.innerText);
+                calculator.updateDisplay();
+            });
+        });
+
+        equalsButton.addEventListener('click', button => {
+            calculator.compute();
+            calculator.updateDisplay();
+        });
+
+        allClearButton.addEventListener('click', button => {
+            calculator.clear();
+            calculator.updateDisplay();
+        });
+
+        deleteButton.addEventListener('click', button => {
+            calculator.delete();
+            calculator.updateDisplay();
+        });
+        
+        // 綁定清空歷史按鈕
+        clearHistoryBtn.addEventListener('click', () => {
+            calculator.clearHistory();
+        });
+
+        // 鍵盤支援
+        document.addEventListener('keydown', (e) => {
+            if ((e.key >= 0 && e.key <= 9) || e.key === '.') {
+                calculator.appendNumber(e.key);
+                calculator.updateDisplay();
+            }
+            if (e.key === '+' || e.key === '-') {
+                calculator.chooseOperation(e.key);
+                calculator.updateDisplay();
+            }
+            if (e.key === '*' || e.key === 'x') {
+                calculator.chooseOperation('×');
+                calculator.updateDisplay();
+            }
+            if (e.key === '/') {
+                e.preventDefault();
+                calculator.chooseOperation('÷');
+                calculator.updateDisplay();
+            }
+            if (e.key === '%' ) {
+                calculator.chooseOperation('%');
+                calculator.updateDisplay();
+            }
+            if (e.key === 'Enter' || e.key === '=') {
+                e.preventDefault();
+                calculator.compute();
+                calculator.updateDisplay();
+            }
+            if (e.key === 'Backspace') {
+                calculator.delete();
+                calculator.updateDisplay();
+            }
+            if (e.key === 'Escape') {
+                calculator.clear();
+                calculator.updateDisplay();
+            }
+        });
+    </script>
+</body>
+</html>
